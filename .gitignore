@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+venv/
+.env
+*.env
+db.sqlite3
+*.log
+.vscode/
+.idea/
+celerybeat-schedule.db
