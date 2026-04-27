@@ -73,14 +73,15 @@ DATABASES = {
 }
 
 # Celery Configuration
-CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL")
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "").strip("'\"")
 
 # MASTER FIX: Prevent ModuleNotFoundError("No module named 'amqps'")
 # We force the result backend to 'rpc' (the name) instead of 'rpc://' (the scheme)
 # and we explicitly ignore any amqp/amqps backend URLs from the environment.
-_env_backend = os.getenv("CELERY_RESULT_BACKEND", "")
+_env_backend = os.getenv("CELERY_RESULT_BACKEND", "").strip("'\"")
 if not _env_backend or _env_backend.startswith("amqp") or _env_backend.startswith("redis"):
     CELERY_RESULT_BACKEND = "rpc"
+    os.environ["CELERY_RESULT_BACKEND"] = "rpc"
 else:
     CELERY_RESULT_BACKEND = _env_backend
 
@@ -93,7 +94,9 @@ CELERY_TIMEZONE = "UTC"
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_TASK_ACKS_LATE = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
-CELERY_BROKER_POOL_LIMIT = 10  # Maintain stable connection pool
+CELERY_BROKER_POOL_LIMIT = 2  # Maintain stable connection pool, lower to prevent hitting CloudAMQP limits
+CELERY_BROKER_HEARTBEAT = 10  # Keep connection alive for CloudAMQP
+CELERY_BROKER_HEARTBEAT_CHECKRATE = 2
 
 # SSL Configuration for CloudAMQP
 if CELERY_BROKER_URL and CELERY_BROKER_URL.startswith('amqps'):
@@ -149,4 +152,47 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
+}
+
+# Logging configuration for Render (Stdout)
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {asctime} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'api': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'celery': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
 }

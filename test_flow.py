@@ -2,7 +2,7 @@ import requests
 import time
 import uuid
 
-API_BASE = "http://localhost:8000/api/v1"
+API_BASE = "https://playto-server.onrender.com/api/v1"
 
 def test_payout_flow():
     # 1. Get Dashboard

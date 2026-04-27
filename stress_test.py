@@ -7,7 +7,7 @@ API_URL = "http://localhost:8000/api/v1/payouts/"
 MERCHANT_ID = 1
 AMOUNT_PAISE = 100
 NUM_REQUESTS = 100000 
-CONCURRENCY = 10000    # 🔥 Highly aggressive concurrency
+CONCURRENCY = 1    # 🔥 Highly aggressive concurrency
 
 async def send_payout_request(session, idx):
     # Pre-generate headers and payload to save time during the loop
