@@ -73,13 +73,14 @@ DATABASES = {
 # Celery Configuration
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL")
 
-# Safeguard: RabbitMQ results must use 'rpc://'. 
-# If the user provides an amqp/amqps URL as the backend, we force it to 'rpc://'
-_backend = os.getenv("CELERY_RESULT_BACKEND", "rpc://")
-if _backend and _backend.startswith("amqp"):
-    CELERY_RESULT_BACKEND = "rpc://"
+# MASTER FIX: Prevent ModuleNotFoundError("No module named 'amqps'")
+# We force the result backend to 'rpc' (the name) instead of 'rpc://' (the scheme)
+# and we explicitly ignore any amqp/amqps backend URLs from the environment.
+_env_backend = os.getenv("CELERY_RESULT_BACKEND", "")
+if not _env_backend or _env_backend.startswith("amqp") or _env_backend.startswith("redis"):
+    CELERY_RESULT_BACKEND = "rpc"
 else:
-    CELERY_RESULT_BACKEND = _backend
+    CELERY_RESULT_BACKEND = _env_backend
 
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
