@@ -5,6 +5,7 @@ dj-database-url
 python-dotenv
 celery
 pyamqp
+amqp
 django-cors-headers
 gunicorn
 aiohttp

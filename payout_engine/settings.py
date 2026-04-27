@@ -72,7 +72,15 @@ DATABASES = {
 
 # Celery Configuration
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL")
-CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", "rpc://")
+
+# Safeguard: RabbitMQ results must use 'rpc://'. 
+# If the user provides an amqp/amqps URL as the backend, we force it to 'rpc://'
+_backend = os.getenv("CELERY_RESULT_BACKEND", "rpc://")
+if _backend and _backend.startswith("amqp"):
+    CELERY_RESULT_BACKEND = "rpc://"
+else:
+    CELERY_RESULT_BACKEND = _backend
+
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
