@@ -62,3 +62,12 @@ if row: return row.response
 ```
 **The Catch:** Two requests could both miss the check simultaneously, both start transactions, and both create duplicate payouts. 
 **The Fix:** I replaced it with an atomic `INSERT` or `SELECT FOR UPDATE` on the idempotency table *inside* the transaction, leveraging the database's unique constraint as a distributed lock.
+
+## 6. The Message Broker (RabbitMQ)
+**Why RabbitMQ?**
+We migrated from Redis to **RabbitMQ** to solve "idle worker" issues. RabbitMQ uses the AMQP protocol with active heartbeats, ensuring that the connection between the API and the Worker remains stable even during long periods of inactivity.
+
+**Robustness Configuration:**
+1. **CELERY_TASK_ACKS_LATE**: Tasks are only removed from the queue *after* they are successfully processed. If a worker crashes, the task is automatically re-queued.
+2. **CELERY_WORKER_PREFETCH_MULTIPLIER = 1**: Prevents one worker from "hogging" multiple tasks. This ensures fair distribution and visibility into the queue.
+3. **rpc:// Result Backend**: Uses transient queues for task results, which is more efficient for RabbitMQ than using a persistent store like Redis for one-off results.

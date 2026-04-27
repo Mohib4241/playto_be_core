@@ -5,7 +5,7 @@ from api.models import Merchant, Payout, Ledger, Idempotency
 class SystemService:
     @staticmethod
     def reset_system():
-        # 1. Clear Message Broker (RabbitMQ/Redis)
+        # 1. Clear Message Broker (RabbitMQ)
         try:
             from celery import Celery
             app = Celery('payout_engine')
