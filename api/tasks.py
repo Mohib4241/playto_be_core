@@ -125,3 +125,34 @@ def process_payout(self, payout_id):
     logger.info("Payout %s completed successfully", payout_id)
     return f"Payout {payout_id} completed"
 
+
+@shared_task
+def reconcile_pending_payouts():
+    """
+    Find payouts stuck in 'pending' for more than 2 minutes and re-enqueue them.
+    This ensures that if a worker dies before picking up a task, it eventually gets processed.
+    """
+    five_minutes_ago = timezone.now() - timezone.timedelta(minutes=2)
+    
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id FROM api_payout 
+            WHERE status = 'pending' AND created_at < %s
+            """,
+            [five_minutes_ago]
+        )
+        stale_payouts = cursor.fetchall()
+    
+    if not stale_payouts:
+        return "No stale payouts found"
+
+    count = 0
+    for (payout_id,) in stale_payouts:
+        # Re-enqueue the task
+        process_payout.apply_async(args=[payout_id], queue="payouts")
+        count += 1
+    
+    logger.info("Reconciled %s stale payouts", count)
+    return f"Reconciled {count} payouts"
+
