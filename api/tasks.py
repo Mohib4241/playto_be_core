@@ -74,6 +74,7 @@ def _claim_processing_attempt(cursor, payout_id):
 
 @shared_task(bind=True, max_retries=MAX_PAYOUT_ATTEMPTS - 1)
 def process_payout(self, payout_id):
+    logger.info("Worker picked up payout %s (Queue: %s)", payout_id, self.request.delivery_info.get('routing_key'))
     # 1. Guard check for terminal status
     with connection.cursor() as cursor:
         cursor.execute("SELECT status FROM api_payout WHERE id = %s", [payout_id])

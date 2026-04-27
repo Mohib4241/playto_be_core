@@ -95,8 +95,8 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_TASK_ACKS_LATE = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_BROKER_POOL_LIMIT = 2  # Maintain stable connection pool, lower to prevent hitting CloudAMQP limits
-CELERY_BROKER_HEARTBEAT = 10  # Keep connection alive for CloudAMQP
-CELERY_BROKER_HEARTBEAT_CHECKRATE = 2
+CELERY_BROKER_HEARTBEAT = 60  # Increase to 60s to be more tolerant of 0.1 CPU lag
+CELERY_BROKER_HEARTBEAT_CHECKRATE = 10
 
 # SSL Configuration for CloudAMQP
 if CELERY_BROKER_URL and CELERY_BROKER_URL.startswith('amqps'):

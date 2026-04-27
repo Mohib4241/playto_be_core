@@ -13,8 +13,8 @@ if [ "$PROCESS_TYPE" = "worker" ]; then
     echo "Starting health check listener on port $PORT..."
     python3 -m http.server "$PORT" &
     
-    # Start Celery
-    celery -A payout_engine worker --loglevel=info -Q payouts,payouts_retry,celery --concurrency=2
+    # Start Celery with solo pool (more efficient for 0.1 CPU / limited memory)
+    celery -A payout_engine worker --loglevel=info -Q payouts,payouts_retry,celery -P solo
 
 elif [ "$PROCESS_TYPE" = "api" ]; then
     echo "Starting ONLY Django Server..."
@@ -23,8 +23,8 @@ elif [ "$PROCESS_TYPE" = "api" ]; then
 
 else
     echo "Starting BOTH API and Worker (Combined Mode)..."
-    # Start worker in background
-    celery -A payout_engine worker --loglevel=info -Q payouts,payouts_retry,celery --concurrency=1 &
+    # Start worker in background with solo pool
+    celery -A payout_engine worker --loglevel=info -Q payouts,payouts_retry,celery -P solo &
     
     # Start API
     gunicorn payout_engine.wsgi:application --bind "0.0.0.0:$PORT"
