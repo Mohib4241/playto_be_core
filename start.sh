@@ -1,10 +1,18 @@
 #!/bin/sh
 
-# 1. Start Celery worker in the background
-# We use --concurrency=1 to save memory
-echo "Starting Celery Worker..."
-celery -A payout_engine worker --loglevel=info -Q payouts,celery --concurrency=1 &
+# Decide which process to run based on an environment variable
+# Options: 'api', 'worker', or 'both' (default)
 
-# 2. Start Django development server (Lightest memory usage)
-echo "Starting Django Server..."
-python manage.py runserver 0.0.0.0:$PORT
+if [ "$PROCESS_TYPE" = "worker" ]; then
+    echo "Starting ONLY Celery Worker..."
+    celery -A payout_engine worker --loglevel=info -Q payouts,celery --concurrency=2
+
+elif [ "$PROCESS_TYPE" = "api" ]; then
+    echo "Starting ONLY Django Server..."
+    python manage.py runserver 0.0.0.0:$PORT
+
+else
+    echo "Starting BOTH API and Worker (Combined Mode)..."
+    celery -A payout_engine worker --loglevel=info -Q payouts,celery --concurrency=1 &
+    python manage.py runserver 0.0.0.0:$PORT
+fi
