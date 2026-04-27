@@ -14,7 +14,7 @@ if [ "$PROCESS_TYPE" = "worker" ]; then
     python3 -m http.server "$PORT" &
     
     # Start Celery
-    celery -A payout_engine worker --loglevel=info -Q payouts,celery --concurrency=2
+    celery -A payout_engine worker --loglevel=info -Q payouts,payouts_retry,celery --concurrency=2
 
 elif [ "$PROCESS_TYPE" = "api" ]; then
     echo "Starting ONLY Django Server..."
@@ -24,7 +24,7 @@ elif [ "$PROCESS_TYPE" = "api" ]; then
 else
     echo "Starting BOTH API and Worker (Combined Mode)..."
     # Start worker in background
-    celery -A payout_engine worker --loglevel=info -Q payouts,celery --concurrency=1 &
+    celery -A payout_engine worker --loglevel=info -Q payouts,payouts_retry,celery --concurrency=1 &
     
     # Start API
     gunicorn payout_engine.wsgi:application --bind "0.0.0.0:$PORT"

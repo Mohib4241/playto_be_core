@@ -12,10 +12,11 @@ services:
     ports:
       - "5432:5432"
 
-  redis:
-    image: redis:7-alpine
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
     ports:
-      - "6379:6379"
+      - "5672:5672"
+      - "15672:15672" # Management UI
 
   api:
     build: .
@@ -29,11 +30,11 @@ services:
     environment:
       - DEBUG=True
       - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-playto}
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=rpc://
     depends_on:
       - db
-      - redis
+      - rabbitmq
 
   worker:
     build: .
@@ -42,10 +43,10 @@ services:
       - .:/app
     environment:
       - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-playto}
-      - CELERY_BROKER_URL=redis://redis:6379/0
-      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
+      - CELERY_RESULT_BACKEND=rpc://
     depends_on:
-      - redis
+      - rabbitmq
       - db
 
 volumes:
