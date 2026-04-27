@@ -1,4 +1,6 @@
 import os
+import ssl
+import certifi
 from pathlib import Path
 import dj_database_url
 from dotenv import load_dotenv
@@ -92,6 +94,13 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_TASK_ACKS_LATE = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_BROKER_POOL_LIMIT = 10  # Maintain stable connection pool
+
+# SSL Configuration for CloudAMQP
+if CELERY_BROKER_URL and CELERY_BROKER_URL.startswith('amqps'):
+    CELERY_BROKER_USE_SSL = {
+        'ca_certs': certifi.where(),
+        'cert_reqs': ssl.CERT_REQUIRED
+    }
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
