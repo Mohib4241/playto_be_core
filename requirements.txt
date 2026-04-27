@@ -8,3 +8,4 @@ pyamqp
 django-cors-headers
 gunicorn
 aiohttp
+certifi
