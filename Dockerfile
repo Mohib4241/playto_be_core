@@ -20,8 +20,11 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 # Copy project
 COPY . /app/
 
+# Make start.sh executable
+RUN chmod +x /app/start.sh
+
 # Expose port
 EXPOSE 8000
 
-# Default command (can be overridden in compose)
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "payout_engine.wsgi:application"]
+# Run the start script
+CMD ["/app/start.sh"]
