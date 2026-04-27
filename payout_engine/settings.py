@@ -94,8 +94,12 @@ USE_TZ = True
 STATIC_URL = "static/"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-# CORS
+# SECURE_PROXY_SSL_HEADER for Render (ensures request.is_secure() works)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# CORS Configuration
 CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = [
     "accept",
     "accept-encoding",
@@ -108,12 +112,16 @@ CORS_ALLOW_HEADERS = [
     "x-requested-with",
     "idempotency-key",
 ]
+CORS_EXPOSE_HEADERS = [
+    "idempotency-key",
+]
 
-# DRF
+# DRF Configuration
 REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
     ],
+    "DEFAULT_AUTHENTICATION_CLASSES": [],  # Disable SessionAuthentication to bypass CSRF for public API
     "DEFAULT_RENDERER_CLASSES": [
         "rest_framework.renderers.JSONRenderer",
     ],
