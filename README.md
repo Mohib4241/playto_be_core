@@ -11,7 +11,8 @@ A robust, idempotent payout engine built with Django, Celery, and PostgreSQL.
 ## 🚀 Running Locally
 1. `source venv/bin/activate`
 2. `pip install -r requirements.txt`
-3. `python manage.py runserver`
-4. `celery -A payout_engine worker --loglevel=info`
+3. Start RabbitMQ: `docker run -d -p 5672:5672 rabbitmq`
+4. `python manage.py runserver`
+5. `celery -A payout_engine worker --loglevel=info -Q payouts,payouts_retry,celery`
 
 See [EXPLAINER.md](./EXPLAINER.md) for architectural details.
