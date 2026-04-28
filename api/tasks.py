@@ -27,6 +27,13 @@ def process_payout(self, payout_id):
     with transaction.atomic():
         with connection.cursor() as cursor:
             # SELECT FOR UPDATE payout
+            lock_query = "SELECT merchant_id, amount_paise, status, attempts FROM api_payout WHERE id = %s FOR UPDATE"
+            cursor.execute(lock_query, [payout_id])
+            row = cursor.fetchone()
+            
+            if not row:
+                return f"Payout {payout_id} not found"
+            
             merchant_id, amount_paise, current_status, attempts = row
             
             if current_status != 'pending':
