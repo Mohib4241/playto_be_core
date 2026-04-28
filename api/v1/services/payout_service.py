@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
+from django.core.cache import cache
 from api.models import Idempotency
 
 IDEMPOTENCY_TTL_HOURS = 24
@@ -168,8 +169,14 @@ class PayoutService:
 
     @staticmethod
     def request_payout(merchant, amount_paise, bank_account_id, idempotency_key, request_hash):
+        # 1. Lookup Redis Cache first (Lightning fast)
+        cache_key = f"idempotency:{merchant.id}:{idempotency_key}"
+        cached_response = cache.get(cache_key)
+        if cached_response:
+            return json.loads(cached_response), True
+
+        # 2. Fallback to DB Lookup (Safety net)
         with connection.cursor() as cursor:
-            # Lookup Idempotency (merchant_id, key)
             cursor.execute(
                 """
                 SELECT response_json
@@ -180,7 +187,9 @@ class PayoutService:
             )
             row = cursor.fetchone()
             if row:
-                return row[0], True # Return cached response
+                # Re-populate cache for next time
+                cache.set(cache_key, json.dumps(row[0]), timeout=IDEMPOTENCY_TTL_HOURS * 3600)
+                return row[0], True
 
         with transaction.atomic():
             with connection.cursor() as cursor:
@@ -229,6 +238,13 @@ class PayoutService:
                         [merchant.id, idempotency_key, request_hash, json.dumps(response_data), timezone.now(), timezone.now(), expires_at]
                     )
                 except IntegrityError:
+                    # In case of rare race condition, try to fetch from cache/DB again
+                    cached = cache.get(cache_key)
+                    if cached:
+                        return json.loads(cached), True
                     raise IdempotencyConflict("Idempotency key already exists")
+
+                # 6. Success! Store in Redis with 24h TTL
+                cache.set(cache_key, json.dumps(response_data), timeout=IDEMPOTENCY_TTL_HOURS * 3600)
 
                 return response_data, False
