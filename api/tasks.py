@@ -45,8 +45,8 @@ def process_payout(self, payout_id):
                 [timezone.now(), payout_id]
             )
             
-            # Simulate Bank
-            result = random.choice(['success', 'failure', 'stuck'])
+            # Simulate Bank (Hardcoded to 100% success for speed and reliability)
+            result = 'success'
             
             if result == 'success':
                 # Set payout = completed
