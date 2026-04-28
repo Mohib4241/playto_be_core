@@ -25,7 +25,8 @@ def cleanup_expired_idempotency():
 
 @shared_task(bind=True, max_retries=MAX_PAYOUT_ATTEMPTS - 1)
 def process_payout(self, payout_id):
-    logger.info("Worker picked up payout %s", payout_id)
+    queue_name = self.request.delivery_info.get('routing_key', 'unknown')
+    logger.info("Worker picked up payout %s from queue %s", payout_id, queue_name)
 
     with transaction.atomic():
         with connection.cursor() as cursor:
@@ -83,10 +84,6 @@ def process_payout(self, payout_id):
                     "UPDATE api_ledger SET status = 'completed' WHERE payout_id = %s AND type = 'debit'",
                     [payout_id]
                 )
-                logger.info("Payout %s completed successfully", payout_id)
-                send_webhook_event.delay(payout_id, 'payout.completed')
-                return f"Payout {payout_id} completed"
-                
             elif result == 'failure':
                 # Set payout = failed
                 cursor.execute(
@@ -107,9 +104,6 @@ def process_payout(self, payout_id):
                     [merchant_id, payout_id, amount_paise, timezone.now()]
                 )
                 logger.info("Payout %s failed and was reversed", payout_id)
-                send_webhook_event.delay(payout_id, 'payout.failed')
-                return f"Payout {payout_id} failed"
-                
             elif result == 'stuck':
                 logger.info("Payout %s stuck, retrying later", payout_id)
                 # Exponential backoff: 30s, 60s, 120s...
@@ -117,6 +111,8 @@ def process_payout(self, payout_id):
                 # Move back to pending so reconciliation or retry can pick it up
                 cursor.execute("UPDATE api_payout SET status = 'pending' WHERE id = %s", [payout_id])
                 raise self.retry(countdown=backoff)
+
+    return f"Payout {payout_id} {result}"
 
 
 @shared_task
@@ -129,9 +125,11 @@ def reconcile_pending_payouts():
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            SELECT id FROM api_payout 
+            UPDATE api_payout 
+            SET status = 'pending', updated_at = NOW()
             WHERE (status = 'pending' AND created_at < %s)
                OR (status = 'processing' AND updated_at < %s)
+            RETURNING id
             """,
             [cutoff_pending, cutoff_processing]
         )
@@ -142,12 +140,8 @@ def reconcile_pending_payouts():
 
     count = 0
     for (payout_id,) in stale_payouts:
-        # Move back to pending so process_payout can lock it
-        with connection.cursor() as cursor:
-            cursor.execute("UPDATE api_payout SET status = 'pending' WHERE id = %s", [payout_id])
-        
         # Re-enqueue the task
-        process_payout.apply_async(args=[payout_id], queue="payouts")
+        process_payout.apply_async(args=[payout_id], queue="payouts_v2")
         count += 1
     
     logger.info("Reconciled %s stale payouts", count)

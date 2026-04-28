@@ -6,8 +6,8 @@ import time
 API_URL = "http://localhost:8000/api/v1/payouts/"
 MERCHANT_ID = 1
 AMOUNT_PAISE = 100
-NUM_REQUESTS = 100000 
-CONCURRENCY = 1    # 🔥 Highly aggressive concurrency
+NUM_REQUESTS = 10000 
+CONCURRENCY = 100    # Stable concurrency for cloud-hosted DB
 
 async def send_payout_request(session, idx):
     # Pre-generate headers and payload to save time during the loop
@@ -18,7 +18,7 @@ async def send_payout_request(session, idx):
     payload = {
         "merchant_id": MERCHANT_ID,
         "amount_paise": AMOUNT_PAISE,
-        "bank_account_id": f"S_{idx}"
+        "bank_account_id": f"ACC_TEST_{idx:06d}"
     }
     
     try:

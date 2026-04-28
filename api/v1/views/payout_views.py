@@ -80,7 +80,7 @@ class PayoutCreateView(APIView):
         if payout_id:
             try:
                 response_data = PayoutService.retry_payout(payout_id)
-                process_payout.apply_async(args=[response_data['id']], queue="payouts")
+                process_payout.apply_async(args=[response_data['id']], queue="payouts_v2")
                 return Response(response_data, status=status.HTTP_200_OK)
             except (ValueError, InvalidPayoutState) as e:
                 return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -141,7 +141,7 @@ class PayoutCreateView(APIView):
             )
 
             if not from_cache:
-                process_payout.apply_async(args=[response_data['id']], queue="payouts")
+                process_payout.apply_async(args=[response_data['id']], queue="payouts_v2")
                 return Response(response_data, status=status.HTTP_201_CREATED)
             else:
                 return Response(response_data, status=status.HTTP_200_OK)
@@ -188,7 +188,7 @@ class PayoutRetryView(APIView):
     def post(self, request, pk):
         try:
             response_data = PayoutService.retry_payout(pk)
-            process_payout.apply_async(args=[response_data['id']], queue="payouts")
+            process_payout.apply_async(args=[response_data['id']], queue="payouts_v2")
             return Response(response_data, status=status.HTTP_200_OK)
         except (ValueError, InvalidPayoutState) as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
