@@ -84,17 +84,20 @@ We use **RabbitMQ** to ensure reliable task queuing. RabbitMQ uses the AMQP prot
 
 ```mermaid
 graph TD
-    A[Client Request] --> B{Idempotency Match?}
-    B -- Yes --> C[Return Cached Response]
-    B -- No --> D[Begin DB Transaction]
-    D --> E["Lock Merchant (FOR UPDATE)"]
-    E --> F{Sufficient Balance?}
-    F -- No --> G[Abort & Return Error]
-    F -- Yes --> H[Hold Funds in Ledger]
-    H --> I[Create Pending Payout]
-    I --> J[Commit Transaction]
-    J --> K[Dispatch to RabbitMQ]
-    K --> L[Return Success & Payout ID]
+    A[POST /payouts] --> B[Lookup Idempotency (merchant_id, key)]
+    B --> C{Found & not expired?}
+    C -->|Yes| D[Return cached response]
+    C -->|No| E[BEGIN TX]
+    E --> F[Lock merchant (SELECT FOR UPDATE)]
+    F --> G[Check balance]
+    G --> H{Sufficient?}
+    H -->|No| I[Rollback + 400]
+    H -->|Yes| J[Create payout (pending)]
+    J --> K[Insert ledger debit (HOLD)]
+    K --> L[Save idempotency row with expires_at = now()+24h]
+    L --> M[COMMIT]
+    M --> N[Enqueue task]
+    N --> O[Return 201]
 ```
 
 ## 8. Worker Task Execution Flow
@@ -109,13 +112,17 @@ graph TD
 
 ```mermaid
 graph TD
-    A[Worker Pulls Task] --> B{Is Payout Pending?}
-    B -- No --> C[Abort Task Early]
-    B -- Yes --> D[Call External Bank Gateway]
-    D --> E{Gateway Response}
-    E -- Success --> F[Mark Status as Completed]
-    E -- Failure --> G[Mark Status as Failed]
-    G --> H[Refund Ledger Hold]
-    F --> I[Ack Task to RabbitMQ]
-    H --> I
+    A[Worker Receives Task] --> B[BEGIN TRANSACTION]
+    B --> C[SELECT FOR UPDATE payout]
+    C --> D[Set status = processing]
+    D --> E[Simulate Bank]
+    E --> F{Result}
+    F -->|Success| G[Set payout = completed]
+    G --> H[Mark ledger debit = completed]
+    F -->|Failure| I[Set payout = failed]
+    I --> J[Insert reversal credit]
+    F -->|Stuck| K[Retry later]
+    H --> L[COMMIT]
+    J --> L
+    K --> L
 ```

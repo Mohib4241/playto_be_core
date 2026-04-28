@@ -94,13 +94,17 @@ CELERY_TIMEZONE = "UTC"
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 CELERY_TASK_ACKS_LATE = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
-CELERY_BROKER_POOL_LIMIT = 2  # Maintain stable connection pool, lower to prevent hitting CloudAMQP limits
-CELERY_BROKER_HEARTBEAT = 60  # Increase to 60s to be more tolerant of 0.1 CPU lag
-CELERY_BROKER_HEARTBEAT_CHECKRATE = 10
+CELERY_BROKER_POOL_LIMIT = 4  # Slightly higher for concurrent dispatch
+CELERY_BROKER_HEARTBEAT = 10  # Aggressive 10s heartbeat for CloudAMQP
+CELERY_BROKER_HEARTBEAT_CHECKRATE = 2 # Check every 2 seconds
 CELERY_BEAT_SCHEDULE = {
     'reconcile-payouts-every-minute': {
         'task': 'api.tasks.reconcile_pending_payouts',
         'schedule': 60.0,  # Run every 60 seconds
+    },
+    'cleanup-expired-idempotency-keys': {
+        'task': 'api.tasks.cleanup_expired_idempotency',
+        'schedule': 3600.0,  # Run every hour
     },
 }
 

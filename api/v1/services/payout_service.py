@@ -1,3 +1,4 @@
+import json
 from datetime import timedelta
 
 from django.db import IntegrityError, connection, transaction
@@ -167,45 +168,34 @@ class PayoutService:
 
     @staticmethod
     def request_payout(merchant, amount_paise, bank_account_id, idempotency_key, request_hash):
-        with transaction.atomic():
-            PayoutService._delete_expired_idempotency_records(merchant.id, idempotency_key)
-            # 1. Claim the idempotency key. A concurrent request with the same
-            # key waits on the database unique constraint until this transaction
-            # commits, then reads the stored response.
-            try:
-                with transaction.atomic():
-                    idempotency = Idempotency.objects.create(
-                        merchant_id=merchant.id,
-                        key=idempotency_key,
-                        request_hash=request_hash,
-                        status='in_progress',
-                    )
-            except IntegrityError:
-                idempotency = (
-                    Idempotency.objects.select_for_update()
-                    .get(merchant_id=merchant.id, key=idempotency_key)
-                )
-                if idempotency.created_at < PayoutService.get_idempotency_cutoff():
-                    raise IdempotencyConflict("Expired idempotency key is being replaced concurrently")
-                if idempotency.request_hash != request_hash:
-                    raise IdempotencyConflict("Idempotency-Key was reused with a different request body")
-                if idempotency.status == 'in_progress':
-                    raise IdempotencyInProgress("A request with this Idempotency-Key is still in progress")
-                return idempotency.response_json, True
+        with connection.cursor() as cursor:
+            # Lookup Idempotency (merchant_id, key)
+            cursor.execute(
+                """
+                SELECT response_json
+                FROM api_idempotency
+                WHERE merchant_id = %s AND key = %s AND expires_at > NOW()
+                """,
+                [merchant.id, idempotency_key]
+            )
+            row = cursor.fetchone()
+            if row:
+                return row[0], True # Return cached response
 
+        with transaction.atomic():
             with connection.cursor() as cursor:
-                # 2. Row-level lock on merchant — prevents double-spend
+                # Lock merchant (SELECT FOR UPDATE)
                 lock_query = "SELECT id FROM api_merchant WHERE id = %s"
                 if connection.features.has_select_for_update:
                     lock_query += " FOR UPDATE"
                 cursor.execute(lock_query, [merchant.id])
-
-                # 3. DB-level balance check
+                
+                # Check balance
                 balance = LedgerService.get_balance(merchant.id)
                 if balance < amount_paise:
                     raise ValueError("Insufficient balance")
-
-                # 4. Create payout in pending state
+                
+                # Create payout (pending)
                 cursor.execute(
                     """
                     INSERT INTO api_payout (merchant_id, amount_paise, bank_account_id, status, attempts, created_at)
@@ -215,10 +205,10 @@ class PayoutService:
                     [merchant.id, amount_paise, bank_account_id, timezone.now()]
                 )
                 payout_id, created_at = cursor.fetchone()
-
-                # 5. Create HOLD linked to this exact payout_id
+                
+                # Insert ledger debit (HOLD)
                 LedgerService.create_hold(merchant.id, payout_id, amount_paise)
-
+                
                 response_data = {
                     "id": payout_id,
                     "amount_paise": amount_paise,
@@ -226,10 +216,19 @@ class PayoutService:
                     "status": "pending",
                     "created_at": created_at.isoformat()
                 }
-
-                # 6. Complete idempotency record with the first response
-                idempotency.response_json = response_data
-                idempotency.status = 'completed'
-                idempotency.save(update_fields=['response_json', 'status', 'updated_at'])
+                
+                # Save idempotency row with expires_at = now()+24h
+                expires_at = timezone.now() + timedelta(hours=24)
+                
+                try:
+                    cursor.execute(
+                        """
+                        INSERT INTO api_idempotency (merchant_id, key, request_hash, response_json, status, created_at, updated_at, expires_at)
+                        VALUES (%s, %s, %s, %s, 'completed', %s, %s, %s)
+                        """,
+                        [merchant.id, idempotency_key, request_hash, json.dumps(response_data), timezone.now(), timezone.now(), expires_at]
+                    )
+                except IntegrityError:
+                    raise IdempotencyConflict("Idempotency key already exists")
 
                 return response_data, False
