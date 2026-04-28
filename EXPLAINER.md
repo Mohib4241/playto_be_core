@@ -150,3 +150,14 @@ To achieve high throughput (hundreds of requests per second), we cannot rely sol
 3. **Attempt Tracking**: The `payout.attempts` column is incremented every time a worker moves a payout to `processing`. 
 4. **Hard Stop**: If `attempts >= 3`, the worker ignores the banking logic and immediately moves the payout to `failed`, triggering the atomic ledger refund.
 5. **Backoff**: If the worker itself detects a "stuck" state during execution, it uses `self.retry(countdown=30 * (2 ** retries))` to perform an exponential backoff.
+
+## 11. Webhook Delivery (Bonus)
+**Constraint:** Reliability in notifying merchants of async results.
+
+**Implementation:**
+1. **Event-Driven**: When a payout reaches a terminal state (`completed` or `failed`), a `send_webhook_event` task is triggered.
+2. **Security**: Payloads are signed using **HMAC-SHA256** with a merchant-specific secret. The signature is sent in the `X-Webhook-Signature` header.
+3. **Reliability**: 
+   - Every delivery is tracked in the `WebhookDelivery` table.
+   - We use **exponential backoff retries** (up to 5 attempts) for failed deliveries.
+   - All response codes and bodies are logged for merchant debugging.

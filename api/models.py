@@ -70,3 +70,36 @@ class Idempotency(models.Model):
         constraints = [
             models.UniqueConstraint(fields=['merchant', 'key'], name='unique_idempotency_key_per_merchant')
         ]
+
+
+class WebhookConfig(models.Model):
+    merchant = models.ForeignKey(Merchant, on_delete=models.CASCADE, related_name='webhooks')
+    url = models.URLField()
+    secret = models.CharField(max_length=255, help_text="Used to sign webhook payloads")
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Webhook for {self.merchant.name} - {self.url}"
+
+
+class WebhookDelivery(models.Model):
+    STATUS_CHOICES = (
+        ('pending', 'Pending'),
+        ('sent', 'Sent'),
+        ('failed', 'Failed'),
+    )
+
+    merchant = models.ForeignKey(Merchant, on_delete=models.CASCADE)
+    payout = models.ForeignKey(Payout, on_delete=models.CASCADE)
+    event_type = models.CharField(max_length=50) # e.g., 'payout.completed', 'payout.failed'
+    payload = models.JSONField()
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    response_code = models.IntegerField(null=True, blank=True)
+    response_body = models.TextField(null=True, blank=True)
+    attempts = models.IntegerField(default=0)
+    last_attempt_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Webhook {self.event_type} for Payout {self.payout_id}"

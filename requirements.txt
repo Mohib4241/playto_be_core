@@ -12,3 +12,4 @@ aiohttp
 certifi
 django-redis
 redis
+requests
