@@ -19,11 +19,11 @@ class Payout(models.Model):
     merchant = models.ForeignKey(Merchant, on_delete=models.CASCADE, related_name='payouts')
     amount_paise = models.BigIntegerField()
     bank_account_id = models.CharField(max_length=255)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', db_index=True)
     attempts = models.IntegerField(default=0)
     processing_started_at = models.DateTimeField(null=True, blank=True)
     next_retry_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True, null=True)
 
     def __str__(self):
@@ -42,10 +42,10 @@ class Ledger(models.Model):
     merchant = models.ForeignKey(Merchant, on_delete=models.CASCADE, related_name='ledger_entries')
     # Link debit holds directly to their payout for precise reversal
     payout = models.ForeignKey(Payout, on_delete=models.SET_NULL, null=True, blank=True, related_name='ledger_entries')
-    type = models.CharField(max_length=10, choices=TYPE_CHOICES)
+    type = models.CharField(max_length=10, choices=TYPE_CHOICES, db_index=True)
     amount_paise = models.BigIntegerField()
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
-    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     def __str__(self):
         return f"{self.merchant.name} - {self.type} - {self.amount_paise}"
@@ -61,7 +61,7 @@ class Idempotency(models.Model):
     request_hash = models.CharField(max_length=255)
     response_json = models.JSONField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='in_progress')
-    expires_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
