@@ -161,3 +161,14 @@ To achieve high throughput (hundreds of requests per second), we cannot rely sol
    - Every delivery is tracked in the `WebhookDelivery` table.
    - We use **exponential backoff retries** (up to 5 attempts) for failed deliveries.
    - All response codes and bodies are logged for merchant debugging.
+
+## 12. Database Connection Pooling
+**Problem:** High latency and connection exhaustion during stress tests due to remote database (Neon) handshakes.
+
+**Solution:**
+1. **Implementation**: We use `django-db-connection-pool` to maintain a pool of 10 persistent connections.
+2. **Efficiency**: Instead of opening a new SSL connection (200ms+) for every request, Django reuses an existing "warm" connection from the pool.
+3. **Configuration**: 
+   - `POOL_SIZE: 10`
+   - `CONN_MAX_AGE: 600` (Connections are kept alive for 10 minutes).
+   - This ensures the system can handle high-concurrency bursts without hitting Neon's connection limits.
