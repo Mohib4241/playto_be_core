@@ -67,9 +67,17 @@ if not DATABASE_URL:
 DATABASES = {
     "default": dj_database_url.config(
         default=DATABASE_URL,
-        conn_max_age=0,
+        conn_max_age=600,
         ssl_require=True
     )
+}
+
+# Connection Pooling
+DATABASES['default']['ENGINE'] = 'dj_db_conn_pool.backends.postgresql'
+DATABASES['default']['POOL_OPTIONS'] = {
+    'POOL_SIZE': 10,
+    'MAX_OVERFLOW': 10,
+    'RECYCLE': 1800, # Recycle connections every 30 minutes
 }
 
 REDIS_URL = os.getenv("REDIS_URL")

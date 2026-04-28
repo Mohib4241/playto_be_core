@@ -13,3 +13,4 @@ certifi
 django-redis
 redis
 requests
+django-db-connection-pool[postgresql]
