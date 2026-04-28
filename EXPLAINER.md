@@ -65,9 +65,57 @@ if row: return row.response
 
 ## 6. The Message Broker (RabbitMQ)
 **Why RabbitMQ?**
-We migrated from Redis to **RabbitMQ** to solve "idle worker" issues. RabbitMQ uses the AMQP protocol with active heartbeats, ensuring that the connection between the API and the Worker remains stable even during long periods of inactivity.
+We use **RabbitMQ** to ensure reliable task queuing. RabbitMQ uses the AMQP protocol with active heartbeats, ensuring that the connection between the API and the Worker remains stable even during long periods of inactivity.
 
 **Robustness Configuration:**
 1. **CELERY_TASK_ACKS_LATE**: Tasks are only removed from the queue *after* they are successfully processed. If a worker crashes, the task is automatically re-queued.
 2. **CELERY_WORKER_PREFETCH_MULTIPLIER = 1**: Prevents one worker from "hogging" multiple tasks. This ensures fair distribution and visibility into the queue.
-3. **rpc:// Result Backend**: Uses transient queues for task results, which is more efficient for RabbitMQ than using a persistent store like Redis for one-off results.
+3. **rpc:// Result Backend**: Uses transient queues for task results, which is highly efficient for RabbitMQ for one-off results.
+
+## 7. Request to Response Flow (API)
+**Step-by-Step Execution:**
+1. **Client Request**: The client sends a payout request to the API with an idempotency key.
+2. **Idempotency Check**: The system validates against `api_idempotency`. If a match is found, the cached response is returned immediately.
+3. **Pessimistic Locking**: A transaction begins, locking the merchant's record (`SELECT FOR UPDATE`) to prevent race conditions.
+4. **Balance Check & Ledger Hold**: The balance is verified. A `pending` debit is written to the ledger to reserve the funds.
+5. **Record Creation**: The payout record is created in a `pending` state, and the database transaction commits.
+6. **Task Enqueueing**: The job is dispatched to the RabbitMQ broker queue.
+7. **Client Response**: The API immediately responds with a successful acknowledgment and the `payout_id`.
+
+```mermaid
+graph TD
+    A[Client Request] --> B{Idempotency Match?}
+    B -- Yes --> C[Return Cached Response]
+    B -- No --> D[Begin DB Transaction]
+    D --> E["Lock Merchant (FOR UPDATE)"]
+    E --> F{Sufficient Balance?}
+    F -- No --> G[Abort & Return Error]
+    F -- Yes --> H[Hold Funds in Ledger]
+    H --> I[Create Pending Payout]
+    I --> J[Commit Transaction]
+    J --> K[Dispatch to RabbitMQ]
+    K --> L[Return Success & Payout ID]
+```
+
+## 8. Worker Task Execution Flow
+**Step-by-Step Execution:**
+1. **Task Retrieval**: The worker pulls the pending task from the RabbitMQ queue.
+2. **Terminal State Check**: The worker checks the database to ensure the payout is still `pending`. If it's already `completed` or `failed`, it aborts early.
+3. **External Gateway Execution**: The worker initiates the money transfer via the external banking provider API.
+4. **Resolution Handling**:
+   - **On Success**: Updates the payout status to `completed`.
+   - **On Failure**: Updates the payout status to `failed` and writes a compensating `credit` to the ledger to release the held funds.
+5. **Task Acknowledgment**: The worker sends an ACK to RabbitMQ, permanently removing the message from the queue.
+
+```mermaid
+graph TD
+    A[Worker Pulls Task] --> B{Is Payout Pending?}
+    B -- No --> C[Abort Task Early]
+    B -- Yes --> D[Call External Bank Gateway]
+    D --> E{Gateway Response}
+    E -- Success --> F[Mark Status as Completed]
+    E -- Failure --> G[Mark Status as Failed]
+    G --> H[Refund Ledger Hold]
+    F --> I[Ack Task to RabbitMQ]
+    H --> I
+```
