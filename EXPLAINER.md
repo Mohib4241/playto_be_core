@@ -84,19 +84,23 @@ We use **RabbitMQ** to ensure reliable task queuing. RabbitMQ uses the AMQP prot
 
 ```mermaid
 graph TD
-    A[POST /payouts] --> B[Lookup Idempotency (merchant_id, key)]
-    B --> C{Found & not expired?}
-    C -->|Yes| D[Return cached response]
-    C -->|No| E[BEGIN TX]
+    A[POST /payouts] --> B1[Lookup Redis Cache]
+    B1 --> B2{Found in Cache?}
+    B2 -->|Yes| C[Return cached response]
+    B2 -->|No| B3[Lookup DB Idempotency]
+    B3 --> C2{Found & not expired?}
+    C2 -->|Yes| D[Populate Cache + Return]
+    C2 -->|No| E[BEGIN TX]
     E --> F[Lock merchant (SELECT FOR UPDATE)]
     F --> G[Check balance]
     G --> H{Sufficient?}
     H -->|No| I[Rollback + 400]
     H -->|Yes| J[Create payout (pending)]
     J --> K[Insert ledger debit (HOLD)]
-    K --> L[Save idempotency row with expires_at = now()+24h]
+    K --> L[Save DB Idempotency row]
     L --> M[COMMIT]
-    M --> N[Enqueue task]
+    M --> M1[Save to Redis Cache]
+    M1 --> N[Enqueue task]
     N --> O[Return 201]
 ```
 
@@ -126,3 +130,13 @@ graph TD
     J --> L
     K --> L
 ```
+
+## 9. Redis In-Memory Caching
+**Why Redis?**
+To achieve high throughput (hundreds of requests per second), we cannot rely solely on PostgreSQL for idempotency lookups. Every DB query adds significant latency (especially in cloud environments).
+
+**Implementation:**
+1. **Cache-Aside Pattern**: The API first checks Redis for the idempotency key (`idempotency:{merchant_id}:{key}`).
+2. **Speed**: Redis lookups take **<1ms**, compared to **50ms-200ms** for a remote DB query.
+3. **Persistence**: We still write to the `api_idempotency` table as a safety net. If Redis is cleared or restarted, the system gracefully falls back to the database and re-populates the cache.
+4. **TTL**: Cache entries are set with a **24-hour expiration**, matching the legal lifecycle of the idempotency keys.
