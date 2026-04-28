@@ -7,33 +7,22 @@ ENV PYTHONUNBUFFERED 1
 # Set work directory
 WORKDIR /app
 
-# Install dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     libpq-dev \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Install python dependencies
+# Install dependencies
 COPY requirements.txt /app/
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade pip
+RUN pip install -r requirements.txt
 
 # Copy project
 COPY . /app/
 
-# Create a non-root user and set permissions
-RUN useradd -m appuser && \
-    chown -R appuser:appuser /app
-USER appuser
-
-# Make start.sh executable
-# (Note: we do this before switching user or ensure the user has permission)
-# Actually, it's better to do it as root then switch.
-USER root
-RUN chmod +x /app/start.sh
-USER appuser
-
 # Expose port
 EXPOSE 8000
 
-# Run the start script
-CMD ["/app/start.sh"]
+# Default command
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]

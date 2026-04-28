@@ -1,53 +1,42 @@
 version: '3.8'
 
 services:
-  db:
-    image: postgres:15-alpine
-    volumes:
-      - postgres_data_be:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB:-playto}
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
-    ports:
-      - "5432:5432"
-
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
-    ports:
-      - "5672:5672"
-      - "15672:15672" # Management UI
-
-  api:
+  web:
     build: .
-    command: >
-      sh -c "python manage.py migrate &&
-             python manage.py runserver 0.0.0.0:8000"
+    command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
     ports:
       - "8000:8000"
-    environment:
-      - DEBUG=True
-      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-playto}
-      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
-      - CELERY_RESULT_BACKEND=rpc://
+    env_file:
+      - .env
     depends_on:
-      - db
-      - rabbitmq
+      - redis
 
   worker:
     build: .
-    command: celery -A payout_engine worker --loglevel=info --concurrency=4 -Q payouts,payouts_retry
+    command: celery -A payout_engine worker --loglevel=info -Q payouts -P solo
     volumes:
       - .:/app
-    environment:
-      - DATABASE_URL=postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-playto}
-      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672//
-      - CELERY_RESULT_BACKEND=rpc://
+    env_file:
+      - .env
     depends_on:
-      - rabbitmq
-      - db
+      - redis
 
-volumes:
-  postgres_data_be:
+  beat:
+    build: .
+    command: celery -A payout_engine beat --loglevel=info
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - redis
+
+  redis:
+    image: "redis:alpine"
+    ports:
+      - "6379:6379"
+
+# Note: PostgreSQL and RabbitMQ are currently handled via external cloud URLs in .env
+# If you want to run them locally in Docker, add them to this file.
