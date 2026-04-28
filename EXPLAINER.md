@@ -35,21 +35,21 @@ This relies on **PostgreSQL Row-Level Locking (`SELECT FOR UPDATE`)**. It serial
 We use a unique constraint on `(merchant_id, idempotency_key)` in the `api_idempotency` table.
 **Collision Handling:**
 If a second request arrives while the first is in-flight:
-1. The second request attempts to create an idempotency record.
-2. It hits the `UniqueConstraint` and waits (Postgres transaction queuing).
-3. Once the first transaction commits, the second one wakes up, sees the existing record, and returns the cached `response_json` without ever triggering the payout logic.
+1. **The Merchant Lock**: Both requests attempt to `SELECT ... FOR UPDATE` on the Merchant row. Postgres serializes them.
+2. **The Winner**: The first request proceeds, checks balance, creates the payout, and commits the idempotency key.
+3. **The Second Request**: Once the first commits, the second request wakes up. It immediately tries to insert the same `merchant_id + key` into `api_idempotency`.
+4. **The Protection**: It hits the **Unique Database Constraint**. My code catches the `IntegrityError` and returns the first request's response instead of creating a second payout.
 
 ## 4. The State Machine
 **Terminal State Protection:**
+In `api/tasks.py`, before a worker starts processing, it locks the payout row and checks the state:
 ```python
-# In playto_be_core/api/tasks.py
-with connection.cursor() as cursor:
-    cursor.execute("SELECT status FROM api_payout WHERE id = %s", [payout_id])
-    row = cursor.fetchone()
-    if row and row[0] in ('completed', 'failed'):
-        return f"Payout {payout_id} already {row[0]}"
+# SELECT FOR UPDATE payout row
+merchant_id, amount_paise, current_status, attempts = row
+if current_status != 'pending':
+    return f"Payout {payout_id} already {current_status}"
 ```
-This check prevents a worker from processing a payout that has already reached a terminal state (e.g., trying to "complete" a payout that was already marked "failed").
+This check (running inside a transaction) ensures that a payout in `completed` or `failed` state can **never** be reset to `processing`. The `SELECT FOR UPDATE` prevents a race condition where two workers might try to process the same "stuck" task.
 
 ## 5. The AI Audit
 **Subtly Wrong AI Code:**
@@ -61,7 +61,7 @@ if row: return row.response
 # ... start transaction ...
 ```
 **The Catch:** Two requests could both miss the check simultaneously, both start transactions, and both create duplicate payouts. 
-**The Fix:** I replaced it with an atomic `INSERT` or `SELECT FOR UPDATE` on the idempotency table *inside* the transaction, leveraging the database's unique constraint as a distributed lock.
+**The Fix:** I replaced it with a **Merchant-level lock** and a **Database Unique Constraint**. The system doesn't "check" if it exists; it tries to `INSERT` and relies on the database to raise an `IntegrityError` if it's a duplicate. This turns a race condition into a deterministic database error.
 
 ## 6. The Message Broker (RabbitMQ)
 **Why RabbitMQ?**
@@ -140,3 +140,13 @@ To achieve high throughput (hundreds of requests per second), we cannot rely sol
 2. **Speed**: Redis lookups take **<1ms**, compared to **50ms-200ms** for a remote DB query.
 3. **Persistence**: We still write to the `api_idempotency` table as a safety net. If Redis is cleared or restarted, the system gracefully falls back to the database and re-populates the cache.
 4. **TTL**: Cache entries are set with a **24-hour expiration**, matching the legal lifecycle of the idempotency keys.
+
+## 10. The Retry Strategy
+**Constraint:** Payouts stuck in `processing` for >30s should be retried with exponential backoff (max 3 attempts).
+
+**How we solve it:**
+1. **Reconciliation Task**: A Celery Beat task runs every minute. It identifies any payout that has been in the `processing` state for more than 30 seconds (based on `updated_at`).
+2. **Safe Re-queueing**: The task resets these "stuck" payouts back to `pending` and re-enqueues them.
+3. **Attempt Tracking**: The `payout.attempts` column is incremented every time a worker moves a payout to `processing`. 
+4. **Hard Stop**: If `attempts >= 3`, the worker ignores the banking logic and immediately moves the payout to `failed`, triggering the atomic ledger refund.
+5. **Backoff**: If the worker itself detects a "stuck" state during execution, it uses `self.retry(countdown=30 * (2 ** retries))` to perform an exponential backoff.
