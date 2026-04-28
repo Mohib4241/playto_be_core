@@ -15,7 +15,7 @@ services:
 
   worker:
     build: .
-    command: celery -A payout_engine worker --loglevel=info -Q payouts -P solo
+    command: celery -A payout_engine worker --loglevel=info -Q payouts_v2,payouts_retry,celery -P solo
     volumes:
       - .:/app
     env_file:
