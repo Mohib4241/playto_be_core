@@ -25,4 +25,4 @@ COPY . /app/
 EXPOSE 8000
 
 # Default command
-CMD ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["./start.sh"]
