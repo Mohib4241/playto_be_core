@@ -10,12 +10,13 @@ if [ "$PROCESS_TYPE" = "worker" ]; then
     echo "Starting ONLY Celery Worker..."
     # Render requires a bound port for 'Web Service' types.
     # We start a tiny health check server to satisfy the port scan.
-    echo "Starting health check listener on port $PORT..."
-    python3 -c "from http.server import HTTPServer, BaseHTTPRequestHandler; class H(BaseHTTPRequestHandler): \
-        do_GET=lambda s: (s.send_response(200), s.send_header('Content-type','text/plain'), s.end_headers(), s.wfile.write(b'OK')); \
-        do_HEAD=lambda s: (s.send_response(200), s.end_headers()); \
-        log_message=lambda *a: None; \
-        HTTPServer(('0.0.0.0', int('$PORT')), H).serve_forever()" &
+    echo "Starting health check responder (V2) on port $PORT..."
+    python3 -c "from http.server import HTTPServer, BaseHTTPRequestHandler; \
+class H(BaseHTTPRequestHandler): \
+    def do_GET(self): self.send_response(200); self.send_header('Content-type','text/plain'); self.end_headers(); self.wfile.write(b'OK') \
+    def do_HEAD(self): self.send_response(200); self.end_headers() \
+    def log_message(self, format, *args): pass \
+HTTPServer(('0.0.0.0', $PORT), H).serve_forever()" &
     
     # Start Celery with solo pool (more efficient for 0.1 CPU / limited memory)
     celery -A payout_engine worker --loglevel=info -Q payouts_v2,payouts_retry,celery -P solo -B
