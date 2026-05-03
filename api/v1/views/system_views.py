@@ -3,6 +3,10 @@ from rest_framework.response import Response
 from rest_framework import status
 from api.v1.services.system_service import SystemService
 
+class HealthCheckView(APIView):
+    def get(self, request):
+        return Response({"status": "healthy"}, status=status.HTTP_200_OK)
+
 class ResetDatabaseView(APIView):
     def post(self, request):
         try:

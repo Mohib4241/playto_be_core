@@ -6,9 +6,10 @@ from api.v1.views.payout_views import (
     PayoutRetryView,
 )
 
-from api.v1.views.system_views import ResetDatabaseView
+from api.v1.views.system_views import ResetDatabaseView, HealthCheckView
 
 urlpatterns = [
+    path('health/', HealthCheckView.as_view(), name='health-check'),
     path('payouts/', PayoutCreateView.as_view(), name='payout-create'),
     path('payouts/<int:pk>/', PayoutDetailView.as_view(), name='payout-detail'),
     path('payouts/<int:pk>/retry/', PayoutRetryView.as_view(), name='payout-retry'),

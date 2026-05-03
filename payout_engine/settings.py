@@ -132,6 +132,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'api.tasks.cleanup_expired_idempotency',
         'schedule': 3600.0,  # Run every hour
     },
+    'keep-server-awake': {
+        'task': 'api.tasks.keep_alive',
+        'schedule': 300.0,  # Ping every 5 minutes
+    },
 }
 
 # SSL Configuration for CloudAMQP

@@ -147,3 +147,15 @@ def reconcile_pending_payouts():
     logger.info("Reconciled %s stale payouts", count)
     return f"Reconciled {count} payouts"
 
+
+@shared_task
+def keep_alive():
+    """Ping the web server to prevent it from sleeping on Render's free tier."""
+    # We use the internal service URL if possible, or the public one
+    url = "https://playto-be-core.onrender.com/api/v1/health/"
+    try:
+        response = requests.get(url, timeout=10)
+        logger.info(f"Keep-alive ping to {url} returned status {response.status_code}")
+    except Exception as e:
+        logger.error(f"Keep-alive ping failed: {e}")
+
