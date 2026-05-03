@@ -29,6 +29,7 @@ def process_payout(self, payout_id):
     logger.info("Worker picked up payout %s from queue %s", payout_id, queue_name)
 
     with transaction.atomic():
+        logger.info("Payout %s: Transaction atomic block started", payout_id)
         with connection.cursor() as cursor:
             # SELECT FOR UPDATE payout
             lock_query = "SELECT merchant_id, amount_paise, status, attempts FROM api_payout WHERE id = %s FOR UPDATE"
@@ -84,6 +85,7 @@ def process_payout(self, payout_id):
                     "UPDATE api_ledger SET status = 'completed' WHERE payout_id = %s AND type = 'debit'",
                     [payout_id]
                 )
+                logger.info("Payout %s: Transaction SUCCESSFUL. Status updated to completed.", payout_id)
             elif result == 'failure':
                 # Set payout = failed
                 cursor.execute(
@@ -103,9 +105,9 @@ def process_payout(self, payout_id):
                     """,
                     [merchant_id, payout_id, amount_paise, timezone.now()]
                 )
-                logger.info("Payout %s failed and was reversed", payout_id)
+                logger.error("Payout %s: Transaction FAILED. Funds have been reversed to merchant ledger.", payout_id)
             elif result == 'stuck':
-                logger.info("Payout %s stuck, retrying later", payout_id)
+                logger.warning("Payout %s: Transaction STUCK. Re-queueing for retry.", payout_id)
                 # Exponential backoff: 30s, 60s, 120s...
                 backoff = RETRY_BASE_SECONDS * (2 ** self.request.retries)
                 # Move back to pending so reconciliation or retry can pick it up
